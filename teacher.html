@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roll Call — Teacher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <div>
+      <div class="eyebrow">Roll Call · Teacher</div>
+      <h1 id="greeting">Dashboard</h1>
+    </div>
+    <button id="logout" style="margin:0;">Sign out</button>
+  </div>
+
+  <!-- Course + session controls -->
+  <div class="card" style="margin-bottom:1.5rem;">
+    <h2>Start a session</h2>
+    <div class="grid-2">
+      <div>
+        <label for="courseSelect">Course</label>
+        <select id="courseSelect"></select>
+        <label for="lat">Classroom latitude (optional geofence)</label>
+        <input type="text" id="lat" placeholder="e.g. 23.0225">
+        <label for="lng">Classroom longitude (optional)</label>
+        <input type="text" id="lng" placeholder="e.g. 72.5714">
+        <button id="startBtn" class="gold">Start session</button>
+        <button id="endBtn" style="display:none; background:var(--rust);">End session</button>
+        <div class="error" id="startErr" style="display:none;"></div>
+      </div>
+      <div>
+        <label>New course</label>
+        <input type="text" id="newCourseName" placeholder="Course name (e.g. Data Structures)">
+        <input type="text" id="newCourseCode" placeholder="Course code (e.g. CS201)" style="margin-top:0.5rem;">
+        <button id="createCourseBtn">Create course</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live session panel -->
+  <div id="livePanel" style="display:none;">
+    <div class="grid-2">
+      <div class="card qr-stage">
+        <h2>Scan to check in</h2>
+        <div class="qr-ring-wrap">
+          <svg width="260" height="260" viewBox="0 0 260 260">
+            <circle class="qr-ring-track" cx="130" cy="130" r="120"></circle>
+            <circle class="qr-ring-progress" id="ringProgress" cx="130" cy="130" r="120"
+              stroke-dasharray="753.98" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="qr-img-wrap"><img id="qrImg" alt="QR code"></div>
+        </div>
+        <p style="font-family:var(--font-mono); font-size:0.8rem; color:var(--ink-soft);">
+          Code refreshes every 15s — a screenshot goes stale fast on purpose.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2 style="display:flex; align-items:center; justify-content:space-between;">
+          <span>Live roll</span>
+          <span class="count-badge" id="countBadge">0 checked in</span>
+        </h2>
+        <ul class="ledger" id="ledgerList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report -->
+  <div class="card" style="margin-top:1.5rem;">
+    <h2>Attendance report</h2>
+    <div id="reportArea"><p style="color:var(--ink-soft);">Select a course above to view its report.</p></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+<script>
+if (!requireLogin(['teacher', 'admin'])) { /* redirected */ }
+document.getElementById('greeting').textContent = `Welcome, ${API.user.name}`;
+document.getElementById('logout').addEventListener('click', () => { API.clearSession(); window.location.href = '/index.html'; });
+
+let courses = [];
+let activeSessionId = null;
+let qrTimer = null;
+let ringTimer = null;
+const ROTATION_SECONDS = 15;
+const socket = io();
+
+async function loadCourses() {
+  courses = await API.call('/courses');
+  const sel = document.getElementById('courseSelect');
+  sel.innerHTML = courses.map(c => `<option value="${c.id}">${c.name} (${c.code})</option>`).join('');
+  if (courses.length) loadReport(sel.value);
+}
+
+document.getElementById('createCourseBtn').addEventListener('click', async () => {
+  const name = document.getElementById('newCourseName').value.trim();
+  const code = document.getElementById('newCourseCode').value.trim();
+  if (!name || !code) return alert('Enter both a course name and code.');
+  try {
+    await API.call('/courses', { method: 'POST', body: { name, code } });
+    document.getElementById('newCourseName').value = '';
+    document.getElementById('newCourseCode').value = '';
+    await loadCourses();
+  } catch (err) { alert(err.message); }
+});
+
+document.getElementById('courseSelect').addEventListener('change', (e) => loadReport(e.target.value));
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('startErr');
+  errEl.style.display = 'none';
+  const course_id = Number(document.getElementById('courseSelect').value);
+  const lat = document.getElementById('lat').value ? Number(document.getElementById('lat').value) : undefined;
+  const lng = document.getElementById('lng').value ? Number(document.getElementById('lng').value) : undefined;
+  try {
+    const data = await API.call('/sessions/start', { method: 'POST', body: { course_id, lat, lng } });
+    activeSessionId = data.session_id;
+    document.getElementById('livePanel').style.display = 'block';
+    document.getElementById('startBtn').style.display = 'none';
+    document.getElementById('endBtn').style.display = 'inline-block';
+    document.getElementById('ledgerList').innerHTML = '';
+    updateCount(0);
+    socket.emit('join_session', activeSessionId);
+    refreshQR();
+    qrTimer = setInterval(refreshQR, ROTATION_SECONDS * 1000);
+    startRing();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+});
+
+document.getElementById('endBtn').addEventListener('click', async () => {
+  if (!activeSessionId) return;
+  await API.call(`/sessions/${activeSessionId}/end`, { method: 'POST' });
+  clearInterval(qrTimer); clearInterval(ringTimer);
+  document.getElementById('livePanel').style.display = 'none';
+  document.getElementById('startBtn').style.display = 'inline-block';
+  document.getElementById('endBtn').style.display = 'none';
+  activeSessionId = null;
+  loadReport(document.getElementById('courseSelect').value);
+});
+
+async function refreshQR() {
+  if (!activeSessionId) return;
+  try {
+    const data = await API.call(`/sessions/${activeSessionId}/qr`);
+    document.getElementById('qrImg').src = data.qr_image;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function startRing() {
+  const circle = document.getElementById('ringProgress');
+  const circumference = 2 * Math.PI * 120;
+  let elapsed = 0;
+  clearInterval(ringTimer);
+  ringTimer = setInterval(() => {
+    elapsed = (elapsed + 1) % ROTATION_SECONDS;
+    const fraction = elapsed / ROTATION_SECONDS;
+    circle.style.strokeDashoffset = circumference * fraction;
+  }, 1000);
+}
+
+function updateCount(n) {
+  document.getElementById('countBadge').textContent = `${n} checked in`;
+}
+
+socket.on('attendee_checked_in', (payload) => {
+  updateCount(payload.count);
+  const li = document.createElement('li');
+  const now = new Date().toLocaleTimeString();
+  li.innerHTML = `<span>${payload.name}</span><span class="time">${now}</span>`;
+  document.getElementById('ledgerList').prepend(li);
+});
+
+async function loadReport(courseId) {
+  if (!courseId) return;
+  const area = document.getElementById('reportArea');
+  area.innerHTML = '<p style="color:var(--ink-soft);">Loading…</p>';
+  try {
+    const data = await API.call(`/reports/course/${courseId}`);
+    if (!data.students.length) {
+      area.innerHTML = '<p style="color:var(--ink-soft);">No students enrolled yet.</p>';
+      return;
+    }
+    area.innerHTML = `
+      <p style="color:var(--ink-soft); font-family:var(--font-mono); font-size:0.85rem;">
+        ${data.total_sessions} session(s) held so far
+      </p>
+      <table>
+        <thead><tr><th>Roll no.</th><th>Name</th><th>Attended</th><th>%</th></tr></thead>
+        <tbody>
+          ${data.students.map(s => `
+            <tr>
+              <td>${s.roll_no || '—'}</td>
+              <td>${s.name}</td>
+              <td>${s.attended} / ${data.total_sessions}</td>
+              <td class="${s.percentage >= 75 ? 'pct-good' : 'pct-bad'}">${s.percentage}%</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (err) {
+    area.innerHTML = `<p class="error">${err.message}</p>`;
+  }
+}
+
+loadCourses();
+</script>
+</body>
+</html>

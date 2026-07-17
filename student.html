@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roll Call — Student</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap" style="max-width: 560px;">
+  <div class="masthead">
+    <div>
+      <div class="eyebrow">Roll Call · Student</div>
+      <h1 id="greeting">My Attendance</h1>
+    </div>
+    <button id="logout" style="margin:0;">Sign out</button>
+  </div>
+
+  <!-- Shown only when arriving from a scanned QR (session+token in URL) -->
+  <div class="card center-status" id="checkinPanel" style="display:none; margin-bottom:1.5rem;">
+    <div class="big" id="checkinMsg">Checking you in…</div>
+    <div id="checkinDetail" style="color:var(--ink-soft); font-family:var(--font-mono); font-size:0.85rem;"></div>
+  </div>
+
+  <div class="card">
+    <h2>My courses</h2>
+    <div id="reportArea"><p style="color:var(--ink-soft);">Loading…</p></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+if (!requireLogin(['student'])) { /* redirected */ }
+document.getElementById('greeting').textContent = `Hi, ${API.user.name}`;
+document.getElementById('logout').addEventListener('click', () => { API.clearSession(); window.location.href = '/index.html'; });
+
+const params = new URLSearchParams(window.location.search);
+const sessionId = params.get('session');
+const token = params.get('token');
+
+async function doCheckin() {
+  const panel = document.getElementById('checkinPanel');
+  const msg = document.getElementById('checkinMsg');
+  const detail = document.getElementById('checkinDetail');
+  panel.style.display = 'block';
+
+  const submit = (lat, lng) => API.call('/checkin', {
+    method: 'POST',
+    body: { session_id: Number(sessionId), token, lat, lng },
+  });
+
+  try {
+    let result;
+    if (navigator.geolocation) {
+      result = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => submit(pos.coords.latitude, pos.coords.longitude).then(resolve).catch(reject),
+          () => submit().then(resolve).catch(reject), // location denied — try without it
+          { timeout: 5000 }
+        );
+      });
+    } else {
+      result = await submit();
+    }
+    msg.textContent = '✓ Checked in';
+    msg.style.color = 'var(--sage)';
+    detail.textContent = result.message;
+    // Clean the URL so a refresh doesn't resubmit
+    window.history.replaceState({}, '', '/student.html');
+  } catch (err) {
+    msg.textContent = '✗ Check-in failed';
+    msg.style.color = 'var(--rust)';
+    detail.textContent = err.message;
+  }
+}
+
+async function loadMyAttendance() {
+  const area = document.getElementById('reportArea');
+  try {
+    const rows = await API.call('/reports/me');
+    if (!rows.length) {
+      area.innerHTML = '<p style="color:var(--ink-soft);">You are not enrolled in any courses yet — ask your teacher to enroll you.</p>';
+      return;
+    }
+    area.innerHTML = `
+      <table>
+        <thead><tr><th>Course</th><th>Attended</th><th>%</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>${r.name} (${r.code})</td>
+              <td>${r.attended} / ${r.total_sessions}</td>
+              <td class="${r.percentage >= 75 ? 'pct-good' : 'pct-bad'}">${r.percentage}%</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (err) {
+    area.innerHTML = `<p class="error">${err.message}</p>`;
+  }
+}
+
+if (sessionId && token) doCheckin();
+loadMyAttendance();
+</script>
+</body>
+</html>

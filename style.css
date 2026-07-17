@@ -1,0 +1,213 @@
+/* ===========================================================
+   Design concept: "the roll-call ledger"
+   A college register book reimagined digitally — parchment
+   surfaces, a forest-green ink for structure, gold for the
+   living/active elements (the QR code, the countdown ring,
+   fresh check-ins), and a monospace face for anything that
+   reads like a logbook entry (roll numbers, timestamps, codes).
+   =========================================================== */
+
+:root {
+  --ink: #1F3D2E;        /* deep ledger-green, primary text/structure */
+  --ink-soft: #3F5C4C;
+  --parchment: #F3EEDD;  /* page background */
+  --parchment-card: #FBF8EE;
+  --gold: #C89B3C;       /* active/live accent */
+  --gold-deep: #A67B25;
+  --sage: #5C8A6A;       /* present / success */
+  --rust: #B3541E;       /* absent / alert */
+  --line: #D8D0B8;       /* hairline rules */
+
+  --font-display: 'Zilla Slab', Georgia, serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--parchment);
+  color: var(--ink);
+  font-family: var(--font-body);
+  min-height: 100vh;
+}
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0 0 0.4em; }
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.masthead .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-deep);
+}
+
+.card {
+  background: var(--parchment-card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1.75rem;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 0.9rem 0 0.3rem;
+}
+
+input, select {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #fff;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+input:focus, select:focus, button:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 3px;
+  padding: 0.65rem 1.2rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: var(--ink);
+  color: var(--parchment-card);
+  margin-top: 1.1rem;
+  transition: background 0.15s ease;
+}
+button:hover { background: var(--ink-soft); }
+button.gold { background: var(--gold); color: var(--ink); }
+button.gold:hover { background: var(--gold-deep); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.error {
+  color: var(--rust);
+  font-size: 0.85rem;
+  margin-top: 0.6rem;
+  font-family: var(--font-mono);
+}
+.success {
+  color: var(--sage);
+  font-size: 0.85rem;
+  margin-top: 0.6rem;
+  font-family: var(--font-mono);
+}
+
+/* --- Signature element: rotating QR with countdown ring --- */
+.qr-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.qr-ring-wrap {
+  position: relative;
+  width: 260px;
+  height: 260px;
+}
+
+.qr-ring-wrap svg { position: absolute; top: 0; left: 0; transform: rotate(-90deg); }
+.qr-ring-wrap svg circle {
+  fill: none;
+  stroke-width: 5;
+}
+.qr-ring-track { stroke: var(--line); }
+.qr-ring-progress {
+  stroke: var(--gold);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.qr-img-wrap {
+  position: absolute;
+  top: 20px; left: 20px; right: 20px; bottom: 20px;
+  background: white;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.qr-img-wrap img { width: 100%; height: 100%; }
+
+/* --- Ledger list --- */
+.ledger {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.ledger li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.55rem 0;
+  border-bottom: 1px dashed var(--line);
+  animation: stamp-in 0.3s ease;
+}
+.ledger li:last-child { border-bottom: none; }
+.ledger .roll { color: var(--ink-soft); }
+.ledger .time { color: var(--gold-deep); }
+
+@keyframes stamp-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.count-badge {
+  font-family: var(--font-mono);
+  background: var(--ink);
+  color: var(--parchment-card);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.center-status {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+.center-status .big { font-family: var(--font-display); font-size: 1.6rem; margin-bottom: 0.5rem; }
+
+table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); }
+th { color: var(--ink-soft); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.04em; }
+.pct-good { color: var(--sage); font-weight: 600; }
+.pct-bad { color: var(--rust); font-weight: 600; }

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roll Call — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap" style="max-width: 440px;">
+  <div class="masthead" style="border-bottom:none; margin-bottom:1rem;">
+    <div>
+      <div class="eyebrow">College Attendance · QR Check-In</div>
+      <h1>Roll Call</h1>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="formTitle">Sign in</h2>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input type="email" id="email" required placeholder="you@college.edu">
+      <label for="password">Password</label>
+      <input type="password" id="password" required placeholder="••••••••">
+      <button type="submit">Sign in</button>
+      <div class="error" id="err" style="display:none;"></div>
+    </form>
+
+    <p style="font-size:0.85rem; margin-top:1.5rem; color:var(--ink-soft);">
+      Demo accounts (seeded) — password for all: <code>password123</code><br>
+      Teacher: teacher@college.edu · Student: aarav@college.edu
+    </p>
+
+    <hr style="border:none; border-top:1px dashed var(--line); margin:1.2rem 0;">
+
+    <details>
+      <summary style="cursor:pointer; color:var(--ink-soft); font-size:0.9rem;">Register a new account</summary>
+      <form id="registerForm" style="margin-top:0.8rem;">
+        <label for="r_name">Full name</label>
+        <input type="text" id="r_name" required>
+        <label for="r_email">Email</label>
+        <input type="email" id="r_email" required>
+        <label for="r_password">Password</label>
+        <input type="password" id="r_password" required>
+        <label for="r_role">Role</label>
+        <select id="r_role">
+          <option value="student">Student</option>
+          <option value="teacher">Teacher</option>
+        </select>
+        <label for="r_roll">Roll number (students only)</label>
+        <input type="text" id="r_roll">
+        <button type="submit" class="gold">Create account</button>
+        <div class="error" id="regErr" style="display:none;"></div>
+        <div class="success" id="regOk" style="display:none;"></div>
+      </form>
+    </details>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('err');
+  errEl.style.display = 'none';
+  try {
+    const data = await API.call('/auth/login', {
+      method: 'POST',
+      body: {
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      },
+    });
+    API.setSession(data.token, data.user);
+    window.location.href = data.user.role === 'student' ? '/student.html' : '/teacher.html';
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+});
+
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('regErr');
+  const okEl = document.getElementById('regOk');
+  errEl.style.display = 'none'; okEl.style.display = 'none';
+  try {
+    await API.call('/auth/register', {
+      method: 'POST',
+      body: {
+        name: document.getElementById('r_name').value,
+        email: document.getElementById('r_email').value,
+        password: document.getElementById('r_password').value,
+        role: document.getElementById('r_role').value,
+        roll_no: document.getElementById('r_roll').value || null,
+      },
+    });
+    okEl.textContent = 'Account created — sign in above.';
+    okEl.style.display = 'block';
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+});
+</script>
+</body>
+</html>
